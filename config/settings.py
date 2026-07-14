@@ -14,7 +14,11 @@ SECRET_KEY = config(
     default='django-insecure-change-me-in-production',
 )
 DEBUG = config('DEBUG', default=True, cast=bool)
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=Csv())
+ALLOWED_HOSTS = config(
+    'ALLOWED_HOSTS',
+    default='localhost,127.0.0.1,10.0.2.2',
+    cast=Csv(),
+)
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -138,11 +142,18 @@ SPECTACULAR_SETTINGS = {
     ],
 }
 
-# CORS (for React Native development)
+# CORS (browser only — mobile app does not need this)
 CORS_ALLOW_ALL_ORIGINS = DEBUG
 CORS_ALLOWED_ORIGINS = config(
     'CORS_ALLOWED_ORIGINS',
     default='http://localhost:3000,http://127.0.0.1:3000',
+    cast=Csv(),
+)
+
+# Trust PythonAnywhere HTTPS origin for Django admin
+CSRF_TRUSTED_ORIGINS = config(
+    'CSRF_TRUSTED_ORIGINS',
+    default='https://localhost',
     cast=Csv(),
 )
 
