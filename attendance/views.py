@@ -106,7 +106,7 @@ class MatchAndMarkAttendanceView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        match = find_best_student_match(capture, with_photos, threshold=50.0)
+        match = find_best_student_match(capture, with_photos, threshold=46.0)
         if not match:
             return Response(
                 {
