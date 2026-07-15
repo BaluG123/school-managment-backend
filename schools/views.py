@@ -1,13 +1,19 @@
-from django.db.models import Count
+from django.db.models import Count, Q
 from drf_spectacular.utils import extend_schema, extend_schema_view
-from rest_framework import generics, status
+from rest_framework import generics
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
 
-from accounts.models import HeadmasterProfile
 from core.permissions import IsSchoolStaff
 from schools.models import ClassRoom, School
 from schools.serializers import ClassRoomSerializer, SchoolCreateSerializer, SchoolSerializer
+
+
+def active_student_count():
+    return Count(
+        'students',
+        filter=Q(students__is_active=True),
+        distinct=True,
+    )
 
 
 @extend_schema_view(
@@ -23,12 +29,11 @@ class SchoolListCreateView(generics.ListCreateAPIView):
         return SchoolSerializer
 
     def get_queryset(self):
-        profile = self.request.user.headmaster_profile
         return School.objects.filter(
             staff__user=self.request.user,
         ).annotate(
             classroom_count=Count('classrooms', distinct=True),
-            student_count=Count('students', distinct=True),
+            student_count=active_student_count(),
         )
 
     def perform_create(self, serializer):
@@ -51,7 +56,7 @@ class SchoolDetailView(generics.RetrieveUpdateAPIView):
         profile = self.request.user.headmaster_profile
         return School.objects.filter(id=profile.school_id).annotate(
             classroom_count=Count('classrooms', distinct=True),
-            student_count=Count('students', distinct=True),
+            student_count=active_student_count(),
         )
 
 
@@ -68,7 +73,7 @@ class ClassRoomListCreateView(generics.ListCreateAPIView):
         return ClassRoom.objects.filter(
             school_id=profile.school_id,
         ).annotate(
-            student_count=Count('students', distinct=True),
+            student_count=active_student_count(),
         )
 
     def perform_create(self, serializer):
@@ -91,7 +96,7 @@ class ClassRoomDetailView(generics.RetrieveUpdateDestroyAPIView):
         return ClassRoom.objects.filter(
             school_id=profile.school_id,
         ).annotate(
-            student_count=Count('students', distinct=True),
+            student_count=active_student_count(),
         )
 
     def perform_destroy(self, instance):

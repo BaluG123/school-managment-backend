@@ -7,11 +7,13 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from attendance.models import Attendance, AttendanceStatus
+from attendance.face_match import find_best_student_match
 from attendance.serializers import (
     AttendanceSerializer,
     BulkMarkAttendanceSerializer,
     ClassAttendanceSummarySerializer,
     MarkAttendanceSerializer,
+    MatchFaceAttendanceSerializer,
     StudentAttendanceSummarySerializer,
 )
 from core.permissions import IsSchoolStaff
@@ -51,6 +53,108 @@ class MarkAttendanceView(generics.CreateAPIView):
         return Response(
             {
                 'message': message,
+                'attendance': AttendanceSerializer(
+                    attendance,
+                    context={'request': request},
+                ).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class MatchAndMarkAttendanceView(APIView):
+    """
+    After mobile liveness passes, upload capture + classroom_id.
+    Server matches against registered face photos and marks attendance.
+    """
+
+    permission_classes = [IsSchoolStaff]
+    parser_classes = [MultiPartParser, FormParser]
+
+    @extend_schema(
+        tags=['Attendance'],
+        summary='Match face photo and mark attendance',
+        request=MatchFaceAttendanceSerializer,
+    )
+    def post(self, request):
+        serializer = MatchFaceAttendanceSerializer(
+            data=request.data,
+            context={'request': request},
+        )
+        serializer.is_valid(raise_exception=True)
+
+        classroom = serializer.context['classroom']
+        capture = serializer.validated_data['capture_photo']
+
+        students = Student.objects.filter(
+            school_id=request.user.headmaster_profile.school_id,
+            classroom=classroom,
+            is_active=True,
+        ).exclude(face_photo='')
+
+        with_photos = [s for s in students if s.face_photo]
+        if not with_photos:
+            return Response(
+                {
+                    'detail': (
+                        'No students with face photos in this classroom. '
+                        'Register students with a face photo first.'
+                    ),
+                    'student_count': students.count(),
+                    'with_photos': 0,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        match = find_best_student_match(capture, with_photos, threshold=62.0)
+        if not match:
+            return Response(
+                {
+                    'detail': (
+                        'No matching student face found. '
+                        'Ask the student to look at the camera again, '
+                        'or re-register their face photo.'
+                    ),
+                    'references_checked': len(with_photos),
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        student, confidence = match
+        capture.seek(0)
+        today = timezone.localdate()
+        attendance, created = Attendance.objects.update_or_create(
+            student=student,
+            date=today,
+            defaults={
+                'school': student.school,
+                'classroom': student.classroom or classroom,
+                'check_in_time': timezone.now(),
+                'status': serializer.validated_data.get(
+                    'status',
+                    AttendanceStatus.PRESENT,
+                ),
+                'marked_by': request.user,
+                'face_match_confidence': confidence,
+                'capture_photo': capture,
+                'notes': serializer.validated_data.get('notes', ''),
+            },
+        )
+
+        return Response(
+            {
+                'message': (
+                    'Attendance marked successfully.'
+                    if created
+                    else 'Attendance updated for today.'
+                ),
+                'matched': True,
+                'confidence': confidence,
+                'student': {
+                    'id': student.id,
+                    'full_name': student.full_name,
+                    'roll_number': student.roll_number,
+                },
                 'attendance': AttendanceSerializer(
                     attendance,
                     context={'request': request},

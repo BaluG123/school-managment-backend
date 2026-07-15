@@ -3,6 +3,7 @@ from rest_framework import serializers
 
 from attendance.models import Attendance, AttendanceStatus
 from core.validators import validate_image_file
+from schools.models import ClassRoom
 from students.models import Student
 
 
@@ -109,6 +110,37 @@ class MarkAttendanceSerializer(serializers.Serializer):
         )
         attendance._was_created = created
         return attendance
+
+
+class MatchFaceAttendanceSerializer(serializers.Serializer):
+    """Match capture against classroom face photos, then mark attendance."""
+
+    classroom_id = serializers.IntegerField()
+    capture_photo = serializers.ImageField()
+    status = serializers.ChoiceField(
+        choices=AttendanceStatus.choices,
+        default=AttendanceStatus.PRESENT,
+        required=False,
+    )
+    notes = serializers.CharField(required=False, allow_blank=True, max_length=500)
+
+    def validate_capture_photo(self, value):
+        validate_image_file(value)
+        return value
+
+    def validate_classroom_id(self, value):
+        request = self.context['request']
+        profile = request.user.headmaster_profile
+        try:
+            classroom = ClassRoom.objects.get(
+                pk=value,
+                school_id=profile.school_id,
+                is_active=True,
+            )
+        except ClassRoom.DoesNotExist:
+            raise serializers.ValidationError('Classroom not found.')
+        self.context['classroom'] = classroom
+        return value
 
 
 class BulkMarkAttendanceSerializer(serializers.Serializer):

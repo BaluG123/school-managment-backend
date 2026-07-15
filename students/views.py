@@ -126,8 +126,18 @@ class StudentFacePhotosListView(APIView):
                 'id': s.id,
                 'full_name': s.full_name,
                 'roll_number': s.roll_number,
-                'face_photo': request.build_absolute_uri(s.face_photo.url) if s.face_photo else None,
+                'face_photo': (
+                    request.build_absolute_uri(s.face_photo.url)
+                    if s.face_photo
+                    else None
+                ),
+                'has_face_photo': bool(s.face_photo),
             }
             for s in students
         ]
-        return Response(data)
+        return Response({
+            'classroom': classroom_id,
+            'count': len(data),
+            'with_photos': sum(1 for d in data if d['has_face_photo']),
+            'students': data,
+        })
