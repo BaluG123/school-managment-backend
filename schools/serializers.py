@@ -38,7 +38,7 @@ class SchoolCreateSerializer(SchoolSerializer):
 
 class ClassRoomSerializer(serializers.ModelSerializer):
     school_name = serializers.CharField(source='school.name', read_only=True)
-    student_count = serializers.IntegerField(read_only=True)
+    student_count = serializers.SerializerMethodField()
 
     class Meta:
         model = ClassRoom
@@ -51,6 +51,16 @@ class ClassRoomSerializer(serializers.ModelSerializer):
             'id', 'school', 'school_name', 'student_count',
             'created_at', 'updated_at',
         ]
+
+    def get_student_count(self, obj):
+        # Always count from DB so UI never shows stale/0 wrongly
+        annotated = getattr(obj, 'student_count', None)
+        if annotated is not None and not callable(annotated):
+            try:
+                return int(annotated)
+            except (TypeError, ValueError):
+                pass
+        return obj.students.filter(is_active=True).count()
 
     def validate_grade(self, value):
         if not value.strip():
@@ -65,9 +75,15 @@ class ClassRoomSerializer(serializers.ModelSerializer):
         return value.strip()
 
     def validate(self, attrs):
-        school = attrs.get('school') or (
-            self.instance.school if self.instance else None
-        )
+        request = self.context.get('request')
+        profile = getattr(getattr(request, 'user', None), 'headmaster_profile', None)
+
+        school = attrs.get('school')
+        if not school and self.instance:
+            school = self.instance.school
+        if not school and profile and profile.school_id:
+            school = profile.school
+
         grade = attrs.get('grade', getattr(self.instance, 'grade', None))
         section = attrs.get('section', getattr(self.instance, 'section', ''))
         academic_year = attrs.get(

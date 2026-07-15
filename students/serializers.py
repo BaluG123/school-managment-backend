@@ -9,6 +9,11 @@ class StudentSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(read_only=True)
     classroom_name = serializers.CharField(source='classroom.name', read_only=True)
     school_name = serializers.CharField(source='school.name', read_only=True)
+    classroom = serializers.PrimaryKeyRelatedField(
+        queryset=ClassRoom.objects.all(),
+        required=True,
+        allow_null=False,
+    )
 
     class Meta:
         model = Student
@@ -23,6 +28,16 @@ class StudentSerializer(serializers.ModelSerializer):
             'id', 'school', 'school_name', 'classroom_name',
             'full_name', 'created_at', 'updated_at',
         ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        request = self.context.get('request')
+        profile = getattr(getattr(request, 'user', None), 'headmaster_profile', None)
+        if profile and profile.school_id:
+            self.fields['classroom'].queryset = ClassRoom.objects.filter(
+                school_id=profile.school_id,
+                is_active=True,
+            )
 
     def validate_face_photo(self, value):
         if value:
@@ -46,6 +61,17 @@ class StudentSerializer(serializers.ModelSerializer):
         if not value.strip():
             raise serializers.ValidationError('Admission number is required.')
         return value.strip()
+
+    def validate_classroom(self, value):
+        if not value:
+            raise serializers.ValidationError('Classroom is required.')
+        request = self.context.get('request')
+        profile = getattr(getattr(request, 'user', None), 'headmaster_profile', None)
+        if profile and profile.school_id and value.school_id != profile.school_id:
+            raise serializers.ValidationError(
+                'Classroom must belong to your school.',
+            )
+        return value
 
     def validate(self, attrs):
         request = self.context.get('request')
