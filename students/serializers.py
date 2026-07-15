@@ -19,7 +19,10 @@ class StudentSerializer(serializers.ModelSerializer):
             'parent_name', 'parent_phone', 'address',
             'face_photo', 'is_active', 'created_at', 'updated_at',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = [
+            'id', 'school', 'school_name', 'classroom_name',
+            'full_name', 'created_at', 'updated_at',
+        ]
 
     def validate_face_photo(self, value):
         if value:
@@ -45,9 +48,15 @@ class StudentSerializer(serializers.ModelSerializer):
         return value.strip()
 
     def validate(self, attrs):
-        school = attrs.get('school') or (
-            self.instance.school if self.instance else None
-        )
+        request = self.context.get('request')
+        profile = getattr(getattr(request, 'user', None), 'headmaster_profile', None)
+
+        school = attrs.get('school')
+        if not school and self.instance:
+            school = self.instance.school
+        if not school and profile and profile.school_id:
+            school = profile.school
+
         classroom = attrs.get('classroom')
         roll_number = attrs.get(
             'roll_number',
