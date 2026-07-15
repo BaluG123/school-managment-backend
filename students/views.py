@@ -52,7 +52,7 @@ class StudentListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         profile = self.request.user.headmaster_profile
-        serializer.save(school_id=profile.school_id)
+        serializer.save(school_id=profile.school_id, is_active=True)
 
 
 @extend_schema_view(
